@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User functions
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+    
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin'];
+    }
+
+    function isSupport() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'support';
+    }
+
+    // Users Collection
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin() || isSupport();
+      allow write: if isAdmin(); // Only admins can update roles
+      allow update: if isOwner(uid) && request.resource.data.role == resource.data.role; // User can update profile but not role
+      
+      // Personal Documents Subcollection
+      match /documents/{docId} {
+        allow read: if isOwner(uid) || isAdmin() || isSupport();
+        allow write: if isOwner(uid); // User creates doc via client app (in real world, maybe backend trigger)
+      }
+    }
+
+    // Invites Collection
+    match /invites/{token} {
+      allow read: if true; // Public needed to validate token on landing
+      allow write: if isAdmin();
+    }
+
+    // Global Collections (if any)
+    match /gstApplications/{id} {
+      allow read: if resource.data.userId == request.auth.uid || isAdmin() || isSupport();
+      allow write: if request.auth.uid != null;
+    }
+  }
+}
